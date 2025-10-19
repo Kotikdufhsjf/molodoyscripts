@@ -572,7 +572,7 @@ end
 function checkForUpdates(isAutoCheck)
     lua_thread.create(function()
         -- Если это авто-проверка и уже проверяли, не флудим
-        if isAutoCheck and autoUpdateChecked then 
+        if autoUpdateChecked then 
             return 
         end
         

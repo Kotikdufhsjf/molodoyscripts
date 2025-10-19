@@ -571,56 +571,40 @@ end
 
 
 function checkForUpdates(isAutoCheck)
-    lua_thread.create(function()
-        -- Если это авто-проверка и уже проверяли, не флудим
-        if isAutoCheck and autoUpdateChecked then 
-            return 
+    -- Убираем lua_thread.create и делаем синхронно
+    if isAutoCheck and autoUpdateChecked then 
+        return 
+    end
+    
+    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
+    
+    local handle = io.popen('curl -s "' .. VERSION_URL .. '"')
+    local online_version = handle:read("*a")
+    handle:close()
+
+    online_version = online_version:gsub("%s+", "")  -- Убираем пробелы и переносы строк
+
+    if online_version and online_version ~= "" then
+        if isAutoCheck then
+            autoUpdateChecked = true
         end
         
-        -- Сообщение только для авто-проверки или если это первая ручная проверка
-        if isAutoCheck or not updateChecked then
-            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
-        end
+        sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
         
-        local handle = io.popen('curl -s "' .. VERSION_URL .. '"')
-        local online_version = handle:read("*a")
-        handle:close()
-
-        online_version = online_version:gsub("%s+", "")  -- Убираем пробелы и переносы строк
-
-        if online_version and online_version ~= "" then
-            -- Помечаем что авто-проверка выполнена (только для авто-проверки)
-            if isAutoCheck then
-                autoUpdateChecked = true
-            end
-            
-            -- Показываем версии только если есть обновление или это не повторная ручная проверка
-            if online_version > VERSION or not updateChecked then
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
-            end
-            
-            if online_version > VERSION then
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Найдено обновление! Используйте /supdate", -1)
-                updateChecked = true
-                return true, online_version
-            else
-                if not updateChecked then
-                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
-                end
-                updateChecked = true
-                return false
-            end
+        if online_version > VERSION then
+            sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Найдено обновление! Используйте /supdate", -1)
+            return true, online_version
         else
-            if not updateChecked then
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
-            end
-            if isAutoCheck then
-                autoUpdateChecked = true -- Все равно помечаем как проверенное чтобы не повторять
-            end
-            updateChecked = true
+            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
             return false
         end
-    end)
+    else
+        sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
+        if isAutoCheck then
+            autoUpdateChecked = true
+        end
+        return false
+    end
 end
 
 function updateScript()
@@ -702,7 +686,7 @@ end
 
 function autoCheckUpdates()
     lua_thread.create(function()
-        wait(3000) -- Ждем немного после загрузки
+        wait(15000) -- Ждем немного после загрузки
         checkForUpdates(true) -- true = это авто-проверка
     end)
 end

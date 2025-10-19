@@ -14,6 +14,7 @@ local VERSION_URL = "https://raw.githubusercontent.com/Kotikdufhsjf/molodoyscrip
 local SCRIPT_URL = "https://raw.githubusercontent.com/Kotikdufhsjf/molodoyscripts/main/autosu.lua"
 local CHECK_UPDATE_ON_START = true -- Проверять обновление при запуске
 local autoUpdateChecked = false -- Флаг что авто-проверка уже была
+local updateChecked = false -- Флаг что любая проверка уже была
 -- ================================
 
 
@@ -572,11 +573,14 @@ end
 function checkForUpdates(isAutoCheck)
     lua_thread.create(function()
         -- Если это авто-проверка и уже проверяли, не флудим
-        if autoUpdateChecked then 
+        if isAutoCheck and autoUpdateChecked then 
             return 
         end
         
-        sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
+        -- Сообщение только для авто-проверки или если это первая ручная проверка
+        if isAutoCheck or not updateChecked then
+            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
+        end
         
         local handle = io.popen('curl -s "' .. VERSION_URL .. '"')
         local online_version = handle:read("*a")
@@ -590,20 +594,30 @@ function checkForUpdates(isAutoCheck)
                 autoUpdateChecked = true
             end
             
-            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
+            -- Показываем версии только если есть обновление или это не повторная ручная проверка
+            if online_version > VERSION or not updateChecked then
+                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
+            end
             
             if online_version > VERSION then
                 sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Найдено обновление! Используйте /supdate", -1)
+                updateChecked = true
                 return true, online_version
             else
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
+                if not updateChecked then
+                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
+                end
+                updateChecked = true
                 return false
             end
         else
-            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
+            if not updateChecked then
+                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
+            end
             if isAutoCheck then
                 autoUpdateChecked = true -- Все равно помечаем как проверенное чтобы не повторять
             end
+            updateChecked = true
             return false
         end
     end)

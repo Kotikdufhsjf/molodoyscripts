@@ -594,13 +594,60 @@ function safeHttpRequest(url)
     end
 end
 
+
+
+function downloadScript()
+    local success, content = safeHttpRequest(SCRIPT_URL)
+    return success, content
+end
+
+function simpleHttpGet(url)
+    -- Простой HTTP клиент через os.execute и curl/wget
+    local temp_file = os.tmpname()
+    
+    -- Пробуем curl (более распространен)
+    local curl_cmd = string.format('curl -s -o "%s" "%s"', temp_file, url)
+    local result = os.execute(curl_cmd)
+    
+    if result == 0 and doesFileExist(temp_file) then
+        local file = io.open(temp_file, "r")
+        if file then
+            local content = file:read("*a")
+            file:close()
+            os.remove(temp_file)
+            return content
+        end
+    end
+    
+    -- Если curl не сработал, пробуем wget
+    local wget_cmd = string.format('wget -q -O "%s" "%s"', temp_file, url)
+    result = os.execute(wget_cmd)
+    
+    if result == 0 and doesFileExist(temp_file) then
+        local file = io.open(temp_file, "r")
+        if file then
+            local content = file:read("*a")
+            file:close()
+            os.remove(temp_file)
+            return content
+        end
+    end
+    
+    -- Очищаем временный файл если он создался
+    if doesFileExist(temp_file) then
+        os.remove(temp_file)
+    end
+    
+    return nil
+end
+
 function checkForUpdates()
     lua_thread.create(function()
         sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
         
-        local success, content = safeHttpRequest(VERSION_URL)
+        local content = simpleHttpGet(VERSION_URL)
         
-        if success and content then
+        if content then
             -- Очищаем и парсим версию
             content = content:gsub("%s+", "")
             local remoteVersion = content:match('^(%d+%.%d+)$')
@@ -620,16 +667,10 @@ function checkForUpdates()
                 return false
             end
         else
-            local errorMsg = content or "Неизвестная ошибка"
-            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Ошибка проверки: " .. errorMsg, -1)
+            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
             return false
         end
     end)
-end
-
-function downloadScript()
-    local success, content = safeHttpRequest(SCRIPT_URL)
-    return success, content
 end
 
 function updateScript()
@@ -665,13 +706,13 @@ function updateScript()
         end
         
         -- Скачиваем новый скрипт
-        local success, remoteScript = downloadScript()
+        local newScript = simpleHttpGet(SCRIPT_URL)
         
-        if success and remoteScript then
+        if newScript then
             local scriptPath = thisScript().path
             local file = io.open(scriptPath, "w")
             if file then
-                file:write(remoteScript)
+                file:write(newScript)
                 file:close()
                 sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Скрипт обновлен до версии " .. remoteVersion .. "!", -1)
                 sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Перезагрузите скрипт для применения изменений", -1)

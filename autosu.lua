@@ -13,6 +13,7 @@ local VERSION = "1.0" -- Текущая версия скрипта
 local VERSION_URL = "https://raw.githubusercontent.com/Kotikdufhsjf/molodoyscripts/main/versionAutoSu.txt"
 local SCRIPT_URL = "https://raw.githubusercontent.com/Kotikdufhsjf/molodoyscripts/main/autosu.lua"
 local CHECK_UPDATE_ON_START = true -- Проверять обновление при запуске
+local autoUpdateChecked = false -- Флаг что авто-проверка уже была
 -- ================================
 
 
@@ -568,106 +569,41 @@ function getPlayerByID(id)
 end
 
 
-function safeHttpRequest(url)
-    local success, result = pcall(function()
-        local http = require("socket.http")
-        local ltn12 = require("ltn12")
-        
-        local response = {}
-        local res, code, headers = http.request{
-            url = url,
-            sink = ltn12.sink.table(response),
-            timeout = 5 -- Таймаут 5 секунд
-        }
-        
-        if code == 200 then
-            return table.concat(response)
-        else
-            return nil, "HTTP ошибка: " .. tostring(code)
-        end
-    end)
-    
-    if success then
-        return true, result
-    else
-        return false, result
-    end
-end
-
-
-
-function downloadScript()
-    local success, content = safeHttpRequest(SCRIPT_URL)
-    return success, content
-end
-
-function simpleHttpGet(url)
-    -- Простой HTTP клиент через os.execute и curl/wget
-    local temp_file = os.tmpname()
-    
-    -- Пробуем curl (более распространен)
-    local curl_cmd = string.format('curl -s -o "%s" "%s"', temp_file, url)
-    local result = os.execute(curl_cmd)
-    
-    if result == 0 and doesFileExist(temp_file) then
-        local file = io.open(temp_file, "r")
-        if file then
-            local content = file:read("*a")
-            file:close()
-            os.remove(temp_file)
-            return content
-        end
-    end
-    
-    -- Если curl не сработал, пробуем wget
-    local wget_cmd = string.format('wget -q -O "%s" "%s"', temp_file, url)
-    result = os.execute(wget_cmd)
-    
-    if result == 0 and doesFileExist(temp_file) then
-        local file = io.open(temp_file, "r")
-        if file then
-            local content = file:read("*a")
-            file:close()
-            os.remove(temp_file)
-            return content
-        end
-    end
-    
-    -- Очищаем временный файл если он создался
-    if doesFileExist(temp_file) then
-        os.remove(temp_file)
-    end
-    
-    return nil
-end
-
-function checkForUpdates()
+function checkForUpdates(isAutoCheck)
     lua_thread.create(function()
+        -- Если это авто-проверка и уже проверяли, не флудим
+        if isAutoCheck and autoUpdateChecked then 
+            return 
+        end
+        
         sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
         
-        local content = simpleHttpGet(VERSION_URL)
-        
-        if content then
-            -- Очищаем и парсим версию
-            content = content:gsub("%s+", "")
-            local remoteVersion = content:match('^(%d+%.%d+)$')
+        local handle = io.popen('curl -s "' .. VERSION_URL .. '"')
+        local online_version = handle:read("*a")
+        handle:close()
+
+        online_version = online_version:gsub("%s+", "")  -- Убираем пробелы и переносы строк
+
+        if online_version and online_version ~= "" then
+            -- Помечаем что авто-проверка выполнена (только для авто-проверки)
+            if isAutoCheck then
+                autoUpdateChecked = true
+            end
             
-            if remoteVersion then
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. remoteVersion, -1)
-                
-                if remoteVersion > VERSION then
-                    sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Найдено обновление! Используйте /supdate", -1)
-                    return true, remoteVersion
-                else
-                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
-                    return false
-                end
+            sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
+            
+            if online_version > VERSION then
+                sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Найдено обновление! Используйте /supdate", -1)
+                return true, online_version
             else
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Неверный формат версии: " .. content, -1)
+                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Версия актуальна", -1)
                 return false
             end
         else
             sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Не удалось проверить обновления", -1)
+            if isAutoCheck then
+                autoUpdateChecked = true -- Все равно помечаем как проверенное чтобы не повторять
+            end
             return false
         end
     end)
@@ -677,15 +613,15 @@ function updateScript()
     lua_thread.create(function()
         sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Начинаю обновление...", -1)
         
-        -- Сначала проверяем версию
-        local updateAvailable, remoteVersion = checkForUpdates()
+        -- Сначала проверяем версию (ручная проверка)
+        local updateAvailable, online_version = checkForUpdates(false)
         
         if not updateAvailable then
             sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFF00}Обновление не требуется или недоступно", -1)
             return
         end
         
-        sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Скачиваю версию " .. remoteVersion .. "...", -1)
+        sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Скачиваю версию " .. online_version .. "...", -1)
         
         -- Сохраняем конфиги
         local currentConfig = {}
@@ -706,35 +642,42 @@ function updateScript()
         end
         
         -- Скачиваем новый скрипт
-        local newScript = simpleHttpGet(SCRIPT_URL)
+        local scriptPath = thisScript().path
+        local handle = io.popen('curl -s -o "' .. scriptPath .. '" "' .. SCRIPT_URL .. '"')
+        handle:close()
         
-        if newScript then
-            local scriptPath = thisScript().path
-            local file = io.open(scriptPath, "w")
+        -- Проверяем успешность скачивания
+        if doesFileExist(scriptPath) then
+            local file = io.open(scriptPath, "r")
             if file then
-                file:write(newScript)
+                local content = file:read("*a")
                 file:close()
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Скрипт обновлен до версии " .. remoteVersion .. "!", -1)
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Перезагрузите скрипт для применения изменений", -1)
                 
-                -- Восстанавливаем конфиги
-                if currentConfig.koap then
-                    local file = io.open(koapFile, "w")
-                    if file then
-                        file:write(currentConfig.koap)
-                        file:close()
+                if content and content ~= "" then
+                    sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Скрипт обновлен до версии " .. online_version .. "!", -1)
+                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Перезагрузите скрипт для применения изменений", -1)
+                    
+                    -- Восстанавливаем конфиги
+                    if currentConfig.koap then
+                        local file = io.open(koapFile, "w")
+                        if file then
+                            file:write(currentConfig.koap)
+                            file:close()
+                        end
                     end
-                end
-                
-                if currentConfig.yk then
-                    local file = io.open(ykFile, "w")
-                    if file then
-                        file:write(currentConfig.yk)
-                        file:close()
+                    
+                    if currentConfig.yk then
+                        local file = io.open(ykFile, "w")
+                        if file then
+                            file:write(currentConfig.yk)
+                            file:close()
+                        end
                     end
+                else
+                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FF0000}Ошибка: скачанный файл пуст", -1)
                 end
             else
-                sampAddChatMessage("{FF0000}[MolodoyHelper] {FF0000}Ошибка сохранения скрипта", -1)
+                sampAddChatMessage("{FF0000}[MolodoyHelper] {FF0000}Ошибка чтения скачанного файла", -1)
             end
         else
             sampAddChatMessage("{FF0000}[MolodoyHelper] {FF0000}Ошибка скачивания скрипта", -1)
@@ -743,6 +686,17 @@ function updateScript()
 end
 
 
+function autoCheckUpdates()
+    lua_thread.create(function()
+        wait(3000) -- Ждем немного после загрузки
+        checkForUpdates(true) -- true = это авто-проверка
+    end)
+end
+
+-- Ручная проверка через команду
+function cmd_scheck()
+    checkForUpdates(false) -- false = это ручная проверка
+end
 
 
 function cmd_supdate()
@@ -813,11 +767,9 @@ function main()
     
     -- Проверяем обновления при запуске
     if CHECK_UPDATE_ON_START then
-        lua_thread.create(function()
-            wait(3000) -- Ждем немного после загрузки
-            checkForUpdates()
-        end)
+        autoCheckUpdates()
     end
+    
     
     if loadKoapData() then
         msg("{FF0000}[MolodoyHelper] {FFFFFF}КОАП: Система загружена. Используйте /sticket [id]")

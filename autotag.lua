@@ -17,54 +17,59 @@ local autoUpdateChecked = false
 -- ================================
 
 function checkForUpdates(isAutoCheck)
-    if isAutoCheck and autoUpdateChecked then 
-        return 
-    end
-    
-    sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Проверка обновлений...", -1)
-    
-    local temp_file = os.tmpname()
-    os.execute('start /min cmd /c "curl -s "' .. VERSION_URL .. '" > "' .. temp_file .. '"')
-    wait(2000)
-    
-    local file = io.open(temp_file, "r")
-    local online_version = ""
-    if file then
-        online_version = file:read("*a") or ""
-        file:close()
-        os.remove(temp_file)
-    end
-
-    online_version = online_version:gsub("%s+", "")
-
-    if online_version and online_version ~= "" then
-        if isAutoCheck then
-            autoUpdateChecked = true
+    lua_thread.create(function()
+        if isAutoCheck and autoUpdateChecked then 
+            return 
         end
         
-        sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
+        sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Проверка обновлений...", -1)
         
-        if online_version > VERSION then
-            sampAddChatMessage("{00FF00}[Molodoy Helper] {00FF00}Найдено обновление! Используйте /rupdate", -1)
-            return true, online_version
+        local temp_file = os.tmpname()
+        os.execute('start /min cmd /c "curl -s "' .. VERSION_URL .. '" > "' .. temp_file .. '"')
+        wait(2000)
+        
+        local file = io.open(temp_file, "r")
+        local online_version = ""
+        if file then
+            online_version = file:read("*a") or ""
+            file:close()
+            os.remove(temp_file)
+        end
+
+        online_version = online_version:gsub("%s+", "")
+
+        if online_version and online_version ~= "" then
+            if isAutoCheck then
+                autoUpdateChecked = true
+            end
+            
+            sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Локальная: {00FF00}" .. VERSION .. "{FFFFFF}, Удаленная: {00FF00}" .. online_version, -1)
+            
+            if online_version > VERSION then
+                sampAddChatMessage("{00FF00}[Molodoy Helper] {00FF00}Найдено обновление! Используйте /rupdate", -1)
+                return true, online_version
+            else
+                sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Версия актуальна", -1)
+                return false
+            end
         else
-            sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Версия актуальна", -1)
+            sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFF00}Не удалось проверить обновления", -1)
+            if isAutoCheck then
+                autoUpdateChecked = true
+            end
             return false
         end
-    else
-        sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFF00}Не удалось проверить обновления", -1)
-        if isAutoCheck then
-            autoUpdateChecked = true
-        end
-        return false
-    end
+    end)
 end
 
 function updateScript()
     lua_thread.create(function()
         sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFFFF}Начинаю обновление...", -1)
         
+        -- Ждем завершения проверки
+        wait(100)
         local updateAvailable, online_version = checkForUpdates(false)
+        wait(3000) -- Ждем результат проверки
         
         if not updateAvailable then
             sampAddChatMessage("{00FF00}[Molodoy Helper] {FFFF00}Обновление не требуется", -1)
@@ -359,6 +364,8 @@ function main()
     
     loadConfig()
     sampAddChatMessage("{00FF00}[Molodoy Helper /r] {FFFFFF}Скрипт загружен! Настройки: /rhelp", -1)
+
+    autoCheckUpdates()
     
     while true do
         wait(0)

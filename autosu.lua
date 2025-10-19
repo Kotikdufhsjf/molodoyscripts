@@ -578,9 +578,17 @@ function checkForUpdates(isAutoCheck)
     
     sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
     
-    local handle = io.popen('curl -s "' .. VERSION_URL .. '"')
-    local online_version = handle:read("*a")
-    handle:close()
+    -- Используем os.execute вместо io.popen чтобы не сворачивало окно
+    local temp_file = os.tmpname()
+    os.execute('curl -s "' .. VERSION_URL .. '" > "' .. temp_file .. '"')
+    
+    local file = io.open(temp_file, "r")
+    local online_version = ""
+    if file then
+        online_version = file:read("*a") or ""
+        file:close()
+        os.remove(temp_file)
+    end
 
     online_version = online_version:gsub("%s+", "")  -- Убираем пробелы и переносы строк
 
@@ -639,10 +647,9 @@ function updateScript()
             end
         end
         
-        -- Скачиваем новый скрипт
+        -- Скачиваем новый скрипт через os.execute чтобы не сворачивало
         local scriptPath = thisScript().path
-        local handle = io.popen('curl -s -o "' .. scriptPath .. '" "' .. SCRIPT_URL .. '"')
-        handle:close()
+        os.execute('curl -s -o "' .. scriptPath .. '" "' .. SCRIPT_URL .. '"')
         
         -- Проверяем успешность скачивания
         if doesFileExist(scriptPath) then
@@ -653,7 +660,7 @@ function updateScript()
                 
                 if content and content ~= "" then
                     sampAddChatMessage("{FF0000}[MolodoyHelper] {00FF00}Скрипт обновлен до версии " .. online_version .. "!", -1)
-                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Перезагрузите скрипт для применения изменений", -1)
+                    sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Перезагрузите скрипт..", -1)
                     
                     -- Восстанавливаем конфиги
                     if currentConfig.koap then

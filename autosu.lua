@@ -571,16 +571,16 @@ end
 
 
 function checkForUpdates(isAutoCheck)
-    -- Убираем lua_thread.create и делаем синхронно
     if isAutoCheck and autoUpdateChecked then 
         return 
     end
     
     sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Проверка обновлений...", -1)
     
-    -- Используем os.execute вместо io.popen чтобы не сворачивало окно
+    -- Используем start /min чтобы запустить curl в minimized окне
     local temp_file = os.tmpname()
-    os.execute('curl -s "' .. VERSION_URL .. '" > "' .. temp_file .. '"')
+    os.execute('start /min cmd /c "curl -s "' .. VERSION_URL .. '" > "' .. temp_file .. '"')
+    wait(2000) -- Ждем завершения curl
     
     local file = io.open(temp_file, "r")
     local online_version = ""
@@ -619,7 +619,6 @@ function updateScript()
     lua_thread.create(function()
         sampAddChatMessage("{FF0000}[MolodoyHelper] {FFFFFF}Начинаю обновление...", -1)
         
-        -- Сначала проверяем версию (ручная проверка)
         local updateAvailable, online_version = checkForUpdates(false)
         
         if not updateAvailable then
@@ -647,9 +646,10 @@ function updateScript()
             end
         end
         
-        -- Скачиваем новый скрипт через os.execute чтобы не сворачивало
+        -- Скачиваем через start /min
         local scriptPath = thisScript().path
-        os.execute('curl -s -o "' .. scriptPath .. '" "' .. SCRIPT_URL .. '"')
+        os.execute('start /min cmd /c "curl -s -o "' .. scriptPath .. '" "' .. SCRIPT_URL .. '"')
+        wait(3000) -- Ждем подольше для скачивания
         
         -- Проверяем успешность скачивания
         if doesFileExist(scriptPath) then
